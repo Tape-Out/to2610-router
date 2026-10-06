@@ -1,0 +1,244 @@
+// 单元测试：只测这一颗设计，不经过 FrameTop。
+// 片外是一台 SPI 主机与 0 号口的 PHY。先看复位后各脚的方向；经 SPI 读管理口标识、拨两根 GPIO；
+// 再写进 0 号口的 MAC 与 IP、打开路由器，从 0 号口发一帧问它 IP 的 ARP 请求，逐项核对发回来的应答与计数。
+// SPI 从口、片上总线、寄存器、RMII 收发与 ARP 应答都走到。跨口转发在设计仓的整片测试里。
+
+module @UNIT_TOP@;
+
+  localparam int IO_WIDTH = 66;
+  localparam time HALF_PERIOD = 10ns;
+
+  // payload 位次，照流片说明的板级连接表。0 号口：TXD[1:0]、TX_EN、RXD[1:0]、CRS_DV、RX_ER
+  localparam int TXD = 0;
+  localparam int TX_EN = 2;
+  localparam int RXD = 3;
+  localparam int CRS_DV = 5;
+  localparam int SCK = 56;
+  localparam int CS_N = 57;
+  localparam int MOSI = 58;
+  localparam int MISO = 59;
+  localparam int GPIO2 = 62;
+
+  localparam logic [31:0] RT = 32'h1000_0000;
+  localparam logic [31:0] GPIO = 32'h1000_1000;
+  localparam logic [47:0] PORT_MAC = 48'h0200_0000_0100;
+  localparam logic [31:0] PORT_IP = {8'd10, 8'd0, 8'd0, 8'd1};
+  localparam logic [47:0] HOST_MAC = 48'h0200_0000_0010;
+  localparam logic [31:0] HOST_IP = {8'd10, 8'd0, 8'd0, 8'd10};
+
+  localparam int FRAME = 60;
+  localparam int TIMEOUT_CYCLES = 60_000;
+  typedef logic [7:0] frame_t [FRAME];
+
+  logic clock = 1'b0;
+  logic reset = 1'b1;
+  logic [IO_WIDTH-1:0] io_in = '0;
+  wire [IO_WIDTH-1:0] io_out;
+  wire [IO_WIDTH-1:0] io_oe;
+
+  always #(HALF_PERIOD) clock = ~clock;
+
+  UserDesignDut #(.IO_WIDTH(IO_WIDTH)) dut (
+    .clock(clock), .reset(reset), .io_in(io_in),
+    .io_out(io_out), .io_oe(io_oe)
+  );
+
+  // SPI 模式 0，高位先出。SCK 周期 12 拍，慢于上限（主频的八分之一）。从口在 SCK 下降沿之后换位，主机在上升沿采
+  task automatic spi_byte(input logic [7:0] tx, output logic [7:0] rx);
+    for (int i = 7; i >= 0; i--) begin
+      io_in[MOSI] = tx[i];
+      repeat (6) @(negedge clock);
+      io_in[SCK] = 1'b1;
+      @(posedge clock);
+      if (io_oe[MISO] !== 1'b1) $fatal(1, "MISO is not driven while CS_N is low");
+      rx[i] = io_out[MISO];
+      repeat (6) @(negedge clock);
+      io_in[SCK] = 1'b0;
+    end
+  endtask
+
+  task automatic spi_word(input logic [31:0] tx, output logic [31:0] rx);
+    logic [7:0] b;
+    for (int k = 3; k >= 0; k--) begin
+      spi_byte(tx[8*k +: 8], b);
+      rx[8*k +: 8] = b;
+    end
+  endtask
+
+  task automatic spi_begin();
+    io_in[CS_N] = 1'b0;
+    repeat (8) @(negedge clock);
+  endtask
+
+  task automatic spi_end();
+    repeat (8) @(negedge clock);
+    io_in[CS_N] = 1'b1;
+    repeat (24) @(negedge clock);
+  endtask
+
+  // 0x02 写一个字；0x03 读一个字（地址之后空一个字节）
+  task automatic bus_write(input logic [31:0] addr, input logic [31:0] data);
+    logic [7:0] b;
+    logic [31:0] w;
+    spi_begin();
+    spi_byte(8'h02, b);
+    spi_word(addr, w);
+    spi_word(data, w);
+    spi_end();
+  endtask
+
+  task automatic bus_read(input logic [31:0] addr, output logic [31:0] data);
+    logic [7:0] b;
+    logic [31:0] w;
+    spi_begin();
+    spi_byte(8'h03, b);
+    spi_word(addr, w);
+    spi_byte(8'h00, b);
+    spi_word(32'd0, data);
+    spi_end();
+  endtask
+
+  function automatic logic [31:0] crc32(input frame_t d);
+    logic [31:0] c;
+    c = 32'hffff_ffff;
+    for (int i = 0; i < FRAME; i++) begin
+      c = c ^ {24'd0, d[i]};
+      for (int k = 0; k < 8; k++) c = c[0] ? (c >> 1) ^ 32'hedb8_8320 : c >> 1;
+    end
+    return ~c;
+  endfunction
+
+  // RMII 每拍两位，字节的低位先出
+  task automatic rmii_byte(input logic [7:0] b);
+    for (int k = 0; k < 4; k++) begin
+      @(negedge clock);
+      io_in[RXD +: 2] = b[2*k +: 2];
+      io_in[CRS_DV] = 1'b1;
+    end
+  endtask
+
+  task automatic rmii_send(input frame_t d);
+    logic [31:0] c;
+    c = crc32(d);
+    repeat (7) rmii_byte(8'h55);
+    rmii_byte(8'hd5);
+    for (int i = 0; i < FRAME; i++) rmii_byte(d[i]);
+    for (int k = 0; k < 4; k++) rmii_byte(c[8*k +: 8]);
+    @(negedge clock);
+    io_in[RXD +: 2] = 2'b00;
+    io_in[CRS_DV] = 1'b0;
+  endtask
+
+  // 收 0 号口发出的一帧：前导码、帧起始符、FRAME 个字节、4 字节 FCS
+  task automatic rmii_receive(output frame_t d, output logic [31:0] tail);
+    logic [7:0] b;
+    int n;
+    n = 0;
+    while (io_out[TX_EN] !== 1'b1) @(posedge clock);
+    while (io_out[TX_EN] === 1'b1) begin
+      for (int k = 0; k < 4; k++) begin
+        b[2*k +: 2] = io_out[TXD +: 2];
+        @(posedge clock);
+      end
+      if (n < 8) begin
+        if (b !== (n == 7 ? 8'hd5 : 8'h55)) $fatal(1, "preamble byte %0d is %h", n, b);
+      end else if (n < 8 + FRAME) begin
+        d[n - 8] = b;
+      end else if (n < 12 + FRAME) begin
+        tail[8*(n - 8 - FRAME) +: 8] = b;
+      end
+      n++;
+    end
+    if (n != 12 + FRAME) $fatal(1, "the frame is %0d bytes on the wire, expected %0d", n, 12 + FRAME);
+  endtask
+
+  // 问 PORT_IP 的 ARP 请求（RFC 826），补零到 60 字节
+  function automatic frame_t arp_request();
+    frame_t d;
+    for (int i = 0; i < FRAME; i++) d[i] = 8'h00;
+    for (int i = 0; i < 6; i++) begin
+      d[i] = 8'hff;
+      d[6 + i] = HOST_MAC[8*(5 - i) +: 8];
+      d[22 + i] = HOST_MAC[8*(5 - i) +: 8];
+    end
+    d[12] = 8'h08;
+    d[13] = 8'h06;
+    d[15] = 8'h01;
+    d[16] = 8'h08;
+    d[18] = 8'h06;
+    d[19] = 8'h04;
+    d[21] = 8'h01;
+    for (int i = 0; i < 4; i++) begin
+      d[28 + i] = HOST_IP[8*(3 - i) +: 8];
+      d[38 + i] = PORT_IP[8*(3 - i) +: 8];
+    end
+    return d;
+  endfunction
+
+  initial begin
+    repeat (TIMEOUT_CYCLES) @(posedge clock);
+    $fatal(1, "not finished after %0d cycles", TIMEOUT_CYCLES);
+  end
+
+  initial begin
+    logic [7:0] b;
+    logic [31:0] w;
+    logic [31:0] tail;
+    frame_t got;
+
+    io_in[CS_N] = 1'b1;
+    repeat (20) @(posedge clock);
+    @(negedge clock);
+    reset = 1'b0;
+    repeat (4) @(posedge clock);
+    #1ns;
+
+    // 方向：每口低三位是发送脚、一直驱动，高四位是接收脚；其余的位此刻都不驱动（MISO 要等 CS_N 拉低，GPIO 复位后是输入）
+    for (int p = 0; p < 4; p++) begin
+      if (io_oe[7*p +: 7] !== 7'b0000111)
+        $fatal(1, "pad directions of port %0d after reset: %b", p, io_oe[7*p +: 7]);
+    end
+    if (io_oe[IO_WIDTH-1:28] !== '0) $fatal(1, "pads 28 and up are driven after reset: %h", io_oe);
+
+    spi_begin();
+    spi_byte(8'h9f, b);
+    spi_word(32'd0, w);
+    spi_end();
+    if (w !== 32'h5350_4953) $fatal(1, "identify read %h, expected 53504953", w);
+
+    bus_write(GPIO + 32'h8, 32'h0000_000c);
+    bus_write(GPIO, 32'h0000_0004);
+    if (io_oe[GPIO2 +: 2] !== 2'b11 || io_out[GPIO2 +: 2] !== 2'b01)
+      $fatal(1, "GPIO 2 and 3: oe %b out %b", io_oe[GPIO2 +: 2], io_out[GPIO2 +: 2]);
+
+    bus_write(RT + 32'h010, {16'd0, PORT_MAC[47:32]});
+    bus_write(RT + 32'h014, PORT_MAC[31:0]);
+    bus_write(RT + 32'h080, PORT_IP);
+    bus_write(RT, 32'd1);
+    bus_read(RT + 32'h080, w);
+    if (w !== PORT_IP) $fatal(1, "port address reads back %h", w);
+
+    rmii_send(arp_request());
+    rmii_receive(got, tail);
+    if (tail !== crc32(got)) $fatal(1, "the reply carries FCS %h, computed %h", tail, crc32(got));
+    for (int i = 0; i < 6; i++) begin
+      if (got[i] !== HOST_MAC[8*(5 - i) +: 8]) $fatal(1, "reply destination byte %0d is %h", i, got[i]);
+      if (got[6 + i] !== PORT_MAC[8*(5 - i) +: 8]) $fatal(1, "reply source byte %0d is %h", i, got[6 + i]);
+      if (got[22 + i] !== PORT_MAC[8*(5 - i) +: 8]) $fatal(1, "reply sender MAC byte %0d is %h", i, got[22 + i]);
+      if (got[32 + i] !== HOST_MAC[8*(5 - i) +: 8]) $fatal(1, "reply target MAC byte %0d is %h", i, got[32 + i]);
+    end
+    if (got[12] !== 8'h08 || got[13] !== 8'h06 || got[21] !== 8'h02)
+      $fatal(1, "not an ARP reply: type %h%h op %h", got[12], got[13], got[21]);
+    for (int i = 0; i < 4; i++) begin
+      if (got[28 + i] !== PORT_IP[8*(3 - i) +: 8]) $fatal(1, "reply sender IP byte %0d is %h", i, got[28 + i]);
+      if (got[38 + i] !== HOST_IP[8*(3 - i) +: 8]) $fatal(1, "reply target IP byte %0d is %h", i, got[38 + i]);
+    end
+
+    bus_read(RT + 32'h424, w);
+    if (w !== 32'd1) $fatal(1, "arpcnt reads %0d after one answered request", w);
+
+    $display("@UNIT_TOP@ PASS: managed over SPI, answered an ARP request for its port address");
+    $finish;
+  end
+
+endmodule

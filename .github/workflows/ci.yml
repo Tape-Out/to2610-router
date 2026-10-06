@@ -1,0 +1,11 @@
+name: ci
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  ip:
+    uses: Tape-Out/.github/.github/workflows/ip.yml@main
+    permissions:
+      contents: write
+    with:
+      # 整片测试：ran asic 用 yosys 展平出交付的 .v，cocotb 在它上面跑 iverilog
+      apt: iverilog yosys
+      pip: cocotb==1.9.2

@@ -1,0 +1,13 @@
+name: asic
+on:
+  workflow_dispatch:
+    inputs:
+      flow:
+        description: ecc 预设：syn_sta 或 rtl2gds
+        default: rtl2gds
+jobs:
+  asic:
+    uses: Tape-Out/.github/.github/workflows/asic.yml@main
+    with:
+      flow: ${{ inputs.flow }}
+      apt: yosys

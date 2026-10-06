@@ -1,0 +1,66 @@
+name: to2610-router
+version: 0.1.0
+spec: '0.1'
+identity:
+  slug: to2610-router
+  display_name: Four-port IPv4 router chip
+  category: soc
+  maturity: simulated
+  summary: 'A coreless four-port 100 Mbps IPv4 router for the ECOS 2610 shuttle: four
+    RMII PHYs, with the port addresses and a static route table written over SPI by
+    a host.'
+bus: none
+instances:
+- name: rt0
+  of: erouter
+  with:
+    ports: 4
+    routes: 16
+    mtu: 512
+  addr: 0x10000000
+- name: gpio0
+  of: gpio
+  with:
+    numPins: 6
+    irq: false
+  addr: 0x10001000
+- name: mgmt
+  of: spis
+deps:
+  hwcore: ^0.1
+  amba: ^0.1
+  to2610-switch: ^0.1
+asic:
+  top: to2610_router
+  frame: mpc
+  mhz: 50
+  flow: syn_sta
+  # 默认的 0.4 没试过；包缓存同样是触发器搭的 to2610-switch 在 0.4 下详细布线走不完，照它放宽
+  util: 0.25
+  # 每口先发后收，七位一组，排法同 to2610-switch；管理口与 GPIO 钉在与它相同的位上，两颗共用一种管理排线
+  pads:
+  - rt0_pins_tx_0_*
+  - rt0_pins_rx_0_*
+  - rt0_pins_tx_1_*
+  - rt0_pins_rx_1_*
+  - rt0_pins_tx_2_*
+  - rt0_pins_rx_2_*
+  - rt0_pins_tx_3_*
+  - rt0_pins_rx_3_*
+  - { port: mgmt_pins_sck, at: 56 }
+  - mgmt_pins_cs_n
+  - mgmt_pins_mosi
+  - { out: mgmt_pins_miso, oe: mgmt_pins_miso_oe }
+  - { in: gpio0_pins_gpio_in, out: gpio0_pins_gpio_out, oe: gpio0_pins_gpio_dir }
+  unused: [irqs]
+tasks:
+  chip:
+    desc: 出流片的 .v，再在它上面跑整片测试
+    run: bash htest/chip.sh {{out}}
+  net:
+    desc: 联合仿真：两颗 to2610-switch 夹这一颗，两个网段的主机互 ping
+    run: bash htest/net.sh {{out}}
+test:
+  upstream:
+  - { name: chip, task: chip, timeout: 3600 }
+  - { name: net, task: net, timeout: 3600 }
