@@ -54,6 +54,10 @@ asic:
   - { in: gpio0_pins_gpio_in, out: gpio0_pins_gpio_out, oe: gpio0_pins_gpio_dir }
   unused: [irqs]
 tasks:
+  gate:
+    desc: 门级冒烟：布线后的网表配标准单元的功能模型，跑整片测试里的几项；网表与模型由流水线给（GATE_NETLIST、GATE_CELLS）
+    run: bash htest/gate.sh {{out}}
+    timeout: 10800
   chip:
     desc: 出流片的 .v，再在它上面跑整片测试
     run: bash htest/chip.sh {{out}}

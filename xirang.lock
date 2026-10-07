@@ -48,10 +48,10 @@ packages:
   kind: ip
   source:
     path: to2610-router
-  digest: sha256:a1ae3891350983904fbe13f2b3684dbd
+  digest: sha256:2ebe4efa4c8b9cbf3841eef753ad4adb
 - name: to2610-switch
   version: 0.1.0
   kind: ip
   source:
     path: to2610-switch
-  digest: sha256:f65ab311b6382d8c175e77a0804a9b57
+  digest: sha256:761ee4e0d7a77cc4d58c8cef1a1c41b3
