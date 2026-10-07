@@ -60,18 +60,25 @@ def tap(name: str) -> int:
     return fd
 
 
-async def host(b: B.Bench, phy: B.Phy, fd: int, stop: pathlib.Path):
-    """TAP 与交换机 b 的那个口之间原样搬帧。"""
-    up_, down = 0, 0
+async def host(b: B.Bench, phy: B.Phy, fd: int, stop: pathlib.Path, gap: int = 2500):
+    """TAP 与交换机 b 的那个口之间搬帧。宿主机来的帧排队、每 gap 拍放进去一帧：路由器每口只有一帧的缓冲，
+    外网服务器一口气发来的十段原样灌进去，后几段都被丢掉；真网上丢了几毫秒就补回来，仿真里一帧要将近一秒，
+    补一次就是几十秒的退避。2500 拍够一帧过两台交换机与路由器。"""
+    up_, down, idle = 0, 0, gap
+    queue: list[bytes] = []
     while not stop.exists():
         await b.cycles(64)
+        idle += 64
         while True:
             try:
-                fr = os.read(fd, 2048)
+                queue.append(os.read(fd, 2048))
             except BlockingIOError:
                 break
+        if queue and idle >= gap:
+            fr = queue.pop(0)
             phy.send(fr + bytes(max(0, 60 - len(fr))))
             up_ += 1
+            idle = 0
         for fr, ok in phy.take():
             if ok:
                 os.write(fd, fr)
