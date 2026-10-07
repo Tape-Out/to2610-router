@@ -54,4 +54,4 @@ packages:
   kind: ip
   source:
     path: to2610-switch
-  digest: sha256:be09576fa95a14998dfdee3cb5d1409b
+  digest: sha256:f65ab311b6382d8c175e77a0804a9b57
