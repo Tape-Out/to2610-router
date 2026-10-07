@@ -16,7 +16,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import spis  # noqa: E402
 
 RT, GPIO = 0x1000_0000, 0x1000_1000
-PORTS, ROUTES, MTU = 4, 16, 512     # 照本仓 ip.yaml 的 ports、routes、mtu
+PORTS, ROUTES, MTU = 4, 16, 128     # 照本仓 ip.yaml 的 ports、routes、mtu
 
 CTRL = 0x000
 MACHI, IPADDR = 0x010, 0x080        # 每口：MAC 的高 16 位、低 32 位两个字；IP 一个字

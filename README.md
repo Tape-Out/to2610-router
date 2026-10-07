@@ -4,7 +4,7 @@ A four-port 100 Mbps IPv4 router chip for the ECOS 2610 shuttle. It has no core:
 
 ![maturity](https://img.shields.io/badge/maturity-simulated-yellow) ![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0%20OR%20MulanPSL--2.0-blue)
 
-Assembled by [`xirang`](https://github.com/Tape-Out/xirang) from [`erouter`](https://github.com/Tape-Out/erouter) (four ports, 16 routes, a 512-byte frame buffer per port), [`spis`](https://github.com/Tape-Out/spis) (SPI slave that masters the on-chip bus) and [`gpio`](https://github.com/Tape-Out/gpio) (six pins). There is no RTL of its own.
+Assembled by [`xirang`](https://github.com/Tape-Out/xirang) from [`erouter`](https://github.com/Tape-Out/erouter) (four ports, 16 routes, a 128-byte frame buffer per port), [`spis`](https://github.com/Tape-Out/spis) (SPI slave that masters the on-chip bus) and [`gpio`](https://github.com/Tape-Out/gpio) (six pins). There is no RTL of its own.
 
 It pairs with [`to2610-switch`](https://github.com/Tape-Out/to2610-switch): one switch per subnet, one switch port wired to a router port. The payload bits of the RMII ports, the SPI management port and the GPIO pins are laid out the same way on both chips.
 
@@ -24,7 +24,7 @@ $ python3 sw/router.py --spidev 0.0 mdio 1 2                           # read re
 
 `sw/spis.py` is the SPI protocol and `sw/router.py` the register map and the operations. The chip tests drive the chip through these same two files, and the joint simulation loads `sw/net.toml` itself.
 
-Hosts behind the router set their gateway to the address of the port they are on, and their MTU to 498.
+Hosts behind the router set their gateway to the address of the port they are on, and their MTU to 114.
 
 ## Testing and tape-out
 

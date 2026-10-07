@@ -229,7 +229,7 @@ async def drops(dut):
 
 @cocotb.test()
 async def frame_sizes(dut):
-    """缓冲 512 字节：正好 512 字节的帧转出去，逐字节是该有的样子；多一个字节整帧丢掉并计数。"""
+    """缓冲 128 字节：正好 128 字节的帧转出去，逐字节是该有的样子；多一个字节整帧丢掉并计数。"""
     b, c, phys, spi, hs, _ = await up(dut)
     body = bytes(k & 0xFF for k in range(R.MTU - 14 - 20))
     f = frame(0, packet(0, host_ip(1), body))

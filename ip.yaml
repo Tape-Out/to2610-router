@@ -16,7 +16,7 @@ instances:
   with:
     ports: 4
     routes: 16
-    mtu: 512
+    mtu: 128
   addr: 0x10000000
 - name: gpio0
   of: gpio
