@@ -27,7 +27,8 @@ HOSTS = (("a", 0, 0, bytes([10, 0, 0, 10])), ("a", 3, 1, bytes([10, 0, 0, 11])),
          ("b", 1, 2, bytes([10, 0, 1, 10])), ("b", 6, 3, bytes([10, 0, 1, 11])))
 
 
-async def up(dut, cfg=CFG):
+async def up(dut, cfg=CFG, skip=()):
+    """skip 里的主机号不建模型，它那个口留给别的东西接（比如宿主机的 TAP）。"""
     b = B.Bench(dut)
     chip = {"a": B.Chip(b, os.environ["NET_SWITCH"], "a_"), "r": B.Chip(b, os.environ["NET_ROUTER"], "r_"),
             "b": B.Chip(b, os.environ["NET_SWITCH"], "b_")}
@@ -38,7 +39,7 @@ async def up(dut, cfg=CFG):
     cocotb.start_soon(b.run())
     await b.release()
     await b.cycles(8)
-    hs = [B.Host(b, phy, B.mac_of(n), ip, gw=GW[s == "b"], n=n) for phy, (s, _, n, ip) in zip(phys, HOSTS)]
+    hs = [B.Host(b, phy, B.mac_of(n), ip, gw=GW[s == "b"], n=n) for phy, (s, _, n, ip) in zip(phys, HOSTS) if n not in skip]
     cocotb.start_soon(B.serve(hs, b))
     if cfg:
         await spi.do(R.load(cfg, fresh=True))
