@@ -68,7 +68,7 @@ def tap(name: str) -> int:
 
 async def host(b: B.Bench, phy: B.Phy, fd: int, stop: pathlib.Path, gap: int = GAP):
     """TAP 与交换机 b 的那个口之间搬帧。宿主机来的帧排队、每 gap 拍放进去一帧：这一路验的是 kvc 的网络栈经路由器
-    与宿主机通。宿主机在墙钟上计时，仿真里一帧要将近一秒，
+    与宿主机通，丢帧在真流量那一段（htest/tcp.sh，NET_GAP=0 按线速连发）里量。宿主机在墙钟上计时，仿真里一帧要将近一秒，
     丢一段补回来就是几十秒的退避，所以这里放慢。2500 拍够一帧过两台交换机与路由器。"""
     up_, down, idle = 0, 0, gap
     queue: list[bytes] = []
