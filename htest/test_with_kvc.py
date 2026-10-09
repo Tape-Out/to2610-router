@@ -7,7 +7,7 @@
 地址照 future-work 的 04 L4：kvc 是 10.0.0.20，MAC 02:00:00:00:00:20，路由器上为它加一条主机路由。
 
 给了 NET_TAP 时跑 with_host：B0 的位置换成宿主机的一块 TAP 网卡（htest/tap-host.sh 配好的），宿主机有真的 TCP/IP，
-并替 10.0.0.0/24 做 NAT 出网；路由器再加一条指向它的默认路由。
+上面跑 HTTP 服务与只答 lab.test 的 DNS；宿主机不转发，测试一个包也不出本机。
 """
 import fcntl
 import json
@@ -25,7 +25,13 @@ KVC = {"to": "10.0.0.20/32", "port": 0, "via": "02:00:00:00:00:20"}
 TAP = os.environ.get("NET_TAP", "")
 # 宿主机顶替的是 B0：主机号 2，地址与 MAC 就是 net.toml 里那条 10.0.1.10 的主机路由
 HOST = 2
-DEFAULT = {"to": "0.0.0.0/0", "port": 1, "via": "02:00:00:00:00:12"}
+GAP = int(os.environ.get("NET_GAP", "2500"))
+
+
+def retrans() -> int:
+    """宿主机 TCP 重传过的报文段数（/proc/net/snmp 的 RetransSegs）。"""
+    head, vals = [line.split() for line in pathlib.Path("/proc/net/snmp").read_text().splitlines() if line.startswith("Tcp:")]
+    return int(vals[head.index("RetransSegs")])
 
 
 async def bridge(b: B.Bench, phy: B.Phy, d: pathlib.Path):
@@ -60,10 +66,10 @@ def tap(name: str) -> int:
     return fd
 
 
-async def host(b: B.Bench, phy: B.Phy, fd: int, stop: pathlib.Path, gap: int = 2500):
-    """TAP 与交换机 b 的那个口之间搬帧。宿主机来的帧排队、每 gap 拍放进去一帧：路由器每口只有一帧的缓冲，
-    外网服务器一口气发来的十段原样灌进去，后几段都被丢掉；真网上丢了几毫秒就补回来，仿真里一帧要将近一秒，
-    补一次就是几十秒的退避。2500 拍够一帧过两台交换机与路由器。"""
+async def host(b: B.Bench, phy: B.Phy, fd: int, stop: pathlib.Path, gap: int = GAP):
+    """TAP 与交换机 b 的那个口之间搬帧。宿主机来的帧排队、每 gap 拍放进去一帧：这一路验的是 kvc 的网络栈经路由器
+    与宿主机通，丢帧在真流量那一段（htest/tcp.sh，NET_GAP=0 按线速连发）里量。宿主机在墙钟上计时，仿真里一帧要将近一秒，
+    丢一段补回来就是几十秒的退避，所以这里放慢。2500 拍够一帧过两台交换机与路由器。"""
     up_, down, idle = 0, 0, gap
     queue: list[bytes] = []
     while not stop.exists():
@@ -103,21 +109,22 @@ async def with_kvc(dut):
 
 @cocotb.test(skip=not TAP)
 async def with_host(dut):
-    """kvc 经交换机 a、路由器、交换机 b 到宿主机：ping、TCP 取文件、经 NAT 查 DNS 与取外网的页面，判据在 kvc 那一半。
+    """kvc 经交换机 a、路由器、交换机 b 到宿主机：ping、TCP 取文件、向宿主机查 lab.test 再按名字取页面，判据在 kvc 那一半。
     这一半只管帧有没有丢、坏：两个方向都有帧过、路由器没有因 FCS 或报文头丢过包。"""
     d = pathlib.Path(os.environ["NET_BRIDGE"])
-    cfg = dict(CFG, route=CFG["route"] + [KVC, DEFAULT])
+    cfg = dict(CFG, route=CFG["route"] + [KVC])
     b, phys, spi, hs = await up(dut, cfg, skip={HOST})
     fd = tap(TAP)
     port = B.Phy(phys[0].c, "sw0", 5)
     side = cocotb.start_soon(host(b, phys[HOST], fd, d / "stop"))
+    r0 = retrans()
     (d / "ready").write_text("1\n")
     sent, back = await bridge(b, port, d)
     to_host, from_host = await side
     os.close(fd)
     n = await spi.do(R.counters())
-    (d / "counters.json").write_text(json.dumps({"to_switch": sent, "to_kvc": back, "from_host": to_host,
-                                                 "to_host": from_host, **n}) + "\n")
+    (d / "counters.json").write_text(json.dumps({"gap": GAP, "to_switch": sent, "to_kvc": back, "from_host": to_host,
+                                                 "to_host": from_host, "host_retrans": retrans() - r0, **n}) + "\n")
     assert to_host > 0 and from_host > 0, (to_host, from_host)
     assert n["fwd"] >= 2 * 10 and n["fcs"] == 0 and n["hdr"] == 0, n
     clean(phys + [port], hs)

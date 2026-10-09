@@ -5,9 +5,13 @@ on:
       flow:
         description: ecc 预设：syn_sta 或 rtl2gds
         default: rtl2gds
+      from-run:
+        description: 后端已由 .github 的 resume.yml 接完：给那一次的 run id，这里只跑门级冒烟
+        default: ""
 jobs:
   asic:
     uses: Tape-Out/.github/.github/workflows/asic.yml@main
     with:
       flow: ${{ inputs.flow }}
+      from-run: ${{ inputs.from-run }}
       apt: yosys

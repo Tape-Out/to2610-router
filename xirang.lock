@@ -18,7 +18,7 @@ packages:
   kind: ip
   source:
     path: erouter
-  digest: sha256:9b80abd08e166d302e823dffc86ced08
+  digest: sha256:a97b2611c40787e8a8b6d2c06580c4a9
 - name: eswitch
   version: 0.1.0
   kind: ip
@@ -48,7 +48,7 @@ packages:
   kind: ip
   source:
     path: to2610-router
-  digest: sha256:d8c9536a8e23a411e29ad8f14a03d78f
+  digest: sha256:9428b5219d405e48b22622b7ae9cf54e
 - name: to2610-switch
   version: 0.1.0
   kind: ip

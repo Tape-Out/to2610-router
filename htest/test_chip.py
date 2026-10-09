@@ -247,28 +247,39 @@ async def frame_sizes(dut):
 
 
 @cocotb.test()
-async def one_frame_per_port(dut):
-    """每个入口只存一帧：前一帧还没发完时到的下一帧整帧丢掉并计数。
+async def back_to_back(dut):
+    """每个入口几块缓冲（这一颗是 3 块）：同一口背靠背三帧、出口空着时三帧都按序转出，一帧不丢
+    （一块时第二帧到时第一帧还在发，要丢）。
 
-    两个入口同时发往同一个出口则各存各的，先后都送到。
+    两个入口各背靠背十帧同时发往同一个出口：出口一帧的时间只发得出一帧，来的是两帧，排到第 2×块数 帧之后
+    各口的块都压着包，再来的整帧丢掉并计数。判：真丢了、丢掉的都记在 busy 上、送到的与丢掉的加起来是二十帧，
+    送到的每一帧逐字节对，同一入口的按原来的次序。
     """
     b, c, phys, spi, hs, _ = await up(dut)
 
     def pkt(p, k, ttl=64):
         return packet(p, host_ip(1), bytes([k]) * 64, ttl=ttl, ident=k)
 
-    phys[0].send(frame(0, pkt(0, 1)))
-    phys[0].send(frame(0, pkt(0, 2)))
+    for k in (1, 2, 3):
+        phys[0].send(frame(0, pkt(0, k)))
     await quiet(b, phys)
-    assert hs[1].seen == [routed(1, pkt(0, 1, 63))]
-    assert (await spi.do(R.counters()))["busy"] == 1
+    assert hs[1].seen == [routed(1, pkt(0, k, 63)) for k in (1, 2, 3)], len(hs[1].seen)
+    assert (await spi.do(R.counters()))["busy"] == 0
     hs[1].seen.clear()
-    phys[0].send(frame(0, pkt(0, 3)))
-    phys[2].send(frame(2, pkt(2, 4)))
+    want = {}
+    for k in range(10):
+        for p in (0, 2):
+            phys[p].send(frame(p, pkt(p, 16 * p + k)))
+            want[routed(1, pkt(p, 16 * p + k, 63))] = (p, k)
     await quiet(b, phys)
-    assert sorted(hs[1].seen) == sorted([routed(1, pkt(0, 3, 63)), routed(1, pkt(2, 4, 63))])
+    got = hs[1].seen
     n = await spi.do(R.counters())
-    assert (n["rx"], n["fwd"], n["busy"]) == (4, 3, 1), n
+    assert all(g in want for g in got), "送到的帧有字节不对"
+    for p in (0, 2):
+        ks = [want[g][1] for g in got if want[g][0] == p]
+        assert ks == sorted(ks), (p, ks)
+    assert n["busy"] > 0 and len(got) + n["busy"] == 20, (len(got), n)
+    assert (n["rx"], n["fwd"]) == (23, 3 + len(got)), n
     clean(phys, hs)
 
 

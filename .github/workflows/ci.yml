@@ -6,6 +6,7 @@ jobs:
     permissions:
       contents: write
     with:
-      # 整片测试：ran asic 用 yosys 展平出交付的 .v，cocotb 在它上面跑 iverilog
-      apt: iverilog yosys
-      pip: cocotb==1.9.2
+      # 整片测试：ran asic 用 yosys 展平出交付的 .v，cocotb 在它上面跑 iverilog；
+      # 真流量那一段在两个网络命名空间里起 TAP 网卡，curl 从 FastAPI 的服务取文件，不出托管机
+      apt: iverilog yosys curl iproute2
+      pip: cocotb==1.9.2 fastapi uvicorn
