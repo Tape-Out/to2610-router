@@ -30,6 +30,7 @@ Hosts behind the router set their gateway to the address of the port they are on
 
 ```console
 $ ran test to2610-router                  # the chip tests, then two switches and the router pinging across subnets
+$ ran run to2610-router tcp               # the same three chips between two host network stacks: ping and an HTTP download
 $ ran asic to2610-router                  # to2610_router.v, ecc at 50 MHz, report.json
 $ ran asic to2610-router --no-run         # only the Verilog file and ecc.toml
 ```
