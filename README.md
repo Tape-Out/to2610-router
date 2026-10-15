@@ -4,11 +4,11 @@ A four-port 100 Mbps IPv4 router chip for the ECOS 2610 shuttle. It has no core:
 
 ![maturity](https://img.shields.io/badge/maturity-simulated-yellow) ![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0%20OR%20MulanPSL--2.0-blue)
 
-Assembled by [`xirang`](https://github.com/Tape-Out/xirang) from [`erouter`](https://github.com/Tape-Out/erouter) (four ports, 16 routes, three 128-byte frame buffers per port), [`spis`](https://github.com/Tape-Out/spis) (SPI slave that masters the on-chip bus) and [`gpio`](https://github.com/Tape-Out/gpio) (six pins). There is no RTL of its own.
+Assembled by [`xirang`](https://github.com/Tape-Out/xirang) from three blocks of the IP library, with no RTL of its own: [`erouter`](https://github.com/Tape-Out/erouter), four ports with 16 routes and three 128-byte frame buffers per port; [`spis`](https://github.com/Tape-Out/spis), an SPI slave that masters the on-chip bus; [`gpio`](https://github.com/Tape-Out/gpio), six pins.
 
 It pairs with [`to2610-switch`](https://github.com/Tape-Out/to2610-switch): one switch per subnet, one switch port wired to a router port. The payload bits of the RMII ports, the SPI management port and the GPIO pins are laid out the same way on both chips.
 
-The board wiring (four RMII PHYs with 8P8C jacks, the SPI management header, MDIO over GPIO), the chip tests and the limits are in [`docs/流片说明.md`](docs/流片说明.md); the tape-out report is generated from that file.
+The board wiring, the chip tests and the limits are in [`docs/流片说明.md`](docs/流片说明.md); the tape-out report is generated from that file.
 
 ## Management
 
